@@ -108,10 +108,6 @@ def RECONNECT(writer, userID):
         USER_BASE[peername] = USER_BASE[foundedKey]
         del USER_BASE[foundedKey]
         logging.info('Pier {} reconnected with uID : '.format(peername) + _userID)
-            
-
-    print(USER_BASE)
-
 
 
 def SEND(writer, data):
