@@ -39,8 +39,10 @@ RES_MSG_OK     = b"0" + bRN
 
 RES_MSG_NOUSER = b"10" + bRN
 
-RES_MSG_CANTCREATE = b"20" + bRN
-RES_MSG_CANTREMOVE = b"21" + bRN
+RES_MSG_CANTCREATE   = b"20" + bRN
+RES_MSG_CANTREMOVE   = b"21" + bRN
+RES_MSG_GAMENOTEXIST = b"22" + bRN
+RES_MSG_MASTERCANTJOIN = b"23" + bRN
 
 
 
@@ -126,8 +128,26 @@ def RENAME(writer, newUserName):
 
 
 def JOIN(writer, gameID):
-    _gameID = gameID.decode()
+    peername = writer.get_extra_info(PEERNAME)
+    if peername in USER_BASE.keys():
+        if not USER_BASE[peername]["gameMaster"]:
+            _gameID = gameID.decode()
+            if _gameID in GAMES_BASE[_gameID]:
+                USER_BASE[peername]["gameID"] = _gameID
+                writer.write(RES_MSG_OK)
+                logging.info('Пир {} присоединился к игре gameID:'.format(peername) + _gameID)
+                
+            else:
+                logging.info('Пир {} попытался присоединиться к несуществующей игре'.format(peername))
+                writer.write(RES_MSG_GAMENOTEXIST)
+        else:
+            logging.info('Пир {}, создавший другую игру пытается соединиться с другой игрой'.format(peername))
+            writer.write(RES_MSG_MASTERCANTJOIN)
+    else:
+        logging.info('Пир {} попытался присоединиться к игре без логина'.format(peername))
+        writer.write(RES_MSG_NOUSER)
     
+
 
 def LEAVE(writer, empty):
     pass
@@ -138,10 +158,12 @@ def START(writer, empty):
     print("START()")
     return result
 
+
 def STOP(writer, empty):
     result = None
     print("STOP()")
     return result
+
 
 def RECONNECT(writer, userID):
     peername = writer.get_extra_info(PEERNAME)
@@ -174,12 +196,12 @@ def SEND(writer, data):
     print("SEND()")
     return result
 
-def GET(writer, data):
+def GET(writer, empty):
     result = None
     print("GET()")
     return result
 
-def USERS(writer, data):
+def USERS(writer, empty):
     result = None
     print("USERS()")
     return result
