@@ -8,6 +8,8 @@ import base64
 import time
 from VeloGameDatabase import VeloGameDatabase
 
+debug = True
+
 GAME_DATABASE_NAME = "velogames.db"
 
 VG = VeloGameDatabase(GAME_DATABASE_NAME)
@@ -72,9 +74,8 @@ def HELLO(writer, userName):
     if userIDHash in USER_BASE:
         USER_BASE[peername]["name"] = userName.decode()
     else:
-        USER_BASE[peername] = {"uID":userIDHash, "name":userName.decode(), "gameMaster":False, "gameID":None, "gameStatus":None, "regTime":time.time()}
+        USER_BASE[peername] = {"uID":userIDHash, "name":userName.decode(), "gameMaster":False, "gameID":None, "gameState":None, "regTime":time.time()}
 
-    print(USER_BASE)
 
 
 def CREATE(writer, options):
@@ -84,7 +85,12 @@ def CREATE(writer, options):
             USER_BASE[peername]["gameMaster"] = True
             gameID = hashlib.sha1(str(time.time()).encode() + b"GAMEID").hexdigest()
             USER_BASE[peername]["gameID"] = gameID
-            GAMES_BASE[gameID] = {"type":"chase", "canViewEveryone":True, "gameMaster":USER_BASE[peername]["uID"], "started":False}
+            USER_BASE[peername]["gameState"] = "player"
+            GAMES_BASE[gameID] = {"type":"chase",
+                                  "canViewEveryone":True,
+                                  "gameMaster":USER_BASE[peername]["uID"],
+                                  "started":False}
+            
             writer.write(gameID.encode() + bRN)
             logging.info('Пир {} создал игру с ID : '.format(peername) + gameID)
         else:
@@ -93,7 +99,6 @@ def CREATE(writer, options):
     else:
         print(SEND_MESSAGE_ERR)
 
-    print(GAMES_BASE)
         
 
 def REMOVE(writer, empty):
@@ -108,6 +113,12 @@ def REMOVE(writer, empty):
                     del GAMES_BASE[gameID]
                     writer.write(RES_MSG_OK)
                     logging.info('Пир {} удалил игру с ID : '.format(peername) + gameID)
+
+                    for player in USER_BASE.keys():
+                        if USER_BASE[player]["gameID"] == gameID:
+                            USER_BASE[player]["gameID"] = None
+                            logging.info('Пир {} был удалён из игры с ID : '.format(player) + gameID)
+                    
                 else:
                     writer.write(RES_MSG_CANTREMOVE)
                     logging.info('Пир {} попытался удалить начатую игру с ID : '.format(peername) + gameID)
@@ -122,9 +133,19 @@ def REMOVE(writer, empty):
 
 
 def RENAME(writer, newUserName):
-    result = None
-    print("RENAME()")
-    return result
+    peername = writer.get_extra_info(PEERNAME)
+    if peername in USER_BASE.keys():
+        if len(newUserName) > 3:
+            USER_BASE[peername]["name"] = newUserName.decode()
+            writer.write(RES_MSG_OK)
+            logging.info('Пир {} переименован в '.format(peername) + newUserName.decode())
+        else:
+            logging.info('Пир {} выбрал слишком короткое имя: '.format(peername) + newUserName.decode())
+        
+    else:
+        logging.info('Пир {} попытался переименоваться без логина'.format(peername))
+        writer.write(RES_MSG_NOUSER)
+
 
 
 def JOIN(writer, gameID):
@@ -132,8 +153,12 @@ def JOIN(writer, gameID):
     if peername in USER_BASE.keys():
         if not USER_BASE[peername]["gameMaster"]:
             _gameID = gameID.decode()
-            if _gameID in GAMES_BASE[_gameID]:
+            if _gameID in GAMES_BASE.keys():
                 USER_BASE[peername]["gameID"] = _gameID
+                if not GAMES_BASE[_gameID]["started"]:
+                    USER_BASE[peername]["gameState"] = "player"
+                else:
+                    USER_BASE[peername]["gameState"] = "spectrator"
                 writer.write(RES_MSG_OK)
                 logging.info('Пир {} присоединился к игре gameID:'.format(peername) + _gameID)
                 
@@ -150,13 +175,34 @@ def JOIN(writer, gameID):
 
 
 def LEAVE(writer, empty):
-    pass
+    peername = writer.get_extra_info(PEERNAME)
+    if peername in USER_BASE.keys():
+        
+        if USER_BASE[peername]["gameID"] != None:
+            _gameID = USER_BASE[peername]["gameID"]
+            USER_BASE[peername]["gameID"] = None
+            USER_BASE[peername]["gameState"] = None
+            logging.info('Пир {} отключился от игры с ID: '.format(peername) + _gameID)
+            writer.write(RES_MSG_OK)
+        else:
+            logging.info('Пир {} попытался отключиться от игры, не подключенным к ней'.format(peername))
+            writer.write(RES_MSG_GAMENOTEXIST)
+        
+    else:
+        logging.info('Пир {} попытался отключиться от игры без логина'.format(peername))
+        writer.write(RES_MSG_NOUSER)
+        
 
 
 def START(writer, empty):
-    result = None
-    print("START()")
-    return result
+    peername = writer.get_extra_info(PEERNAME)
+    if peername in USER_BASE.keys():
+        
+
+        
+    else:
+        logging.info('Пир {} попытался начать игру без логина'.format(peername))
+        writer.write(RES_MSG_NOUSER)
 
 
 def STOP(writer, empty):
@@ -211,6 +257,17 @@ def DISCONNECT(writer, empty):
     logging.info('Connection from {} closed by DISCONNECT command'.format(peername))
     writer.close()
 
+def _USERS(writer, empty):
+    if debug:
+        for user in USER_BASE.keys():
+            print(USER_BASE[user])
+        
+
+def _GAMES(writer, empty):
+     if debug:
+        for game in GAMES_BASE.keys():
+            print(GAMES_BASE[game])
+
 
 
 MESSAGE_HANDLERS = {b"HELLO":HELLO,
@@ -225,7 +282,9 @@ MESSAGE_HANDLERS = {b"HELLO":HELLO,
                     b"SEND":SEND,
                     b"GET":GET,
                     b"USERS":USERS,
-                    b"DISCONNECT":DISCONNECT}
+                    b"DISCONNECT":DISCONNECT,
+                    b"_USERS":_USERS,
+                    b"_GAMES":_GAMES}
 
     
 
@@ -261,7 +320,6 @@ def handle_connection(reader, writer):
                 if ((command != None) and (command in MESSAGE_HANDLERS.keys())):
                     func = MESSAGE_HANDLERS[command]
                     func(writer, params)
-                    print("params:", params.decode())
  
             else:
                 logging.info('Connection from {} closed by peer'.format(peername))
