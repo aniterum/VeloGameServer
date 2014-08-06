@@ -45,6 +45,7 @@ RES_MSG_CANTCREATE   = b"20" + bRN
 RES_MSG_CANTREMOVE   = b"21" + bRN
 RES_MSG_GAMENOTEXIST = b"22" + bRN
 RES_MSG_MASTERCANTJOIN = b"23" + bRN
+RES_MSG_MASTERCANTLEAVE = b"24" + bRN
 
 
 
@@ -177,17 +178,19 @@ def JOIN(writer, gameID):
 def LEAVE(writer, empty):
     peername = writer.get_extra_info(PEERNAME)
     if peername in USER_BASE.keys():
-        
-        if USER_BASE[peername]["gameID"] != None:
-            _gameID = USER_BASE[peername]["gameID"]
-            USER_BASE[peername]["gameID"] = None
-            USER_BASE[peername]["gameState"] = None
-            logging.info('Пир {} отключился от игры с ID: '.format(peername) + _gameID)
-            writer.write(RES_MSG_OK)
+        if not USER_BASE[peername]["gameMaster"]:
+            if USER_BASE[peername]["gameID"] != None:
+                _gameID = USER_BASE[peername]["gameID"]
+                USER_BASE[peername]["gameID"] = None
+                USER_BASE[peername]["gameState"] = None
+                logging.info('Пир {} отключился от игры с ID: '.format(peername) + _gameID)
+                writer.write(RES_MSG_OK)
+            else:
+                logging.info('Пир {} попытался отключиться от игры, не подключенным к ней'.format(peername))
+                writer.write(RES_MSG_MASTERCANTLEAVE)
         else:
-            logging.info('Пир {} попытался отключиться от игры, не подключенным к ней'.format(peername))
+            logging.info('Мастер-пир {} попытался отключиться от игры'.format(peername))
             writer.write(RES_MSG_GAMENOTEXIST)
-        
     else:
         logging.info('Пир {} попытался отключиться от игры без логина'.format(peername))
         writer.write(RES_MSG_NOUSER)
@@ -197,7 +200,7 @@ def LEAVE(writer, empty):
 def START(writer, empty):
     peername = writer.get_extra_info(PEERNAME)
     if peername in USER_BASE.keys():
-        
+        pass
 
         
     else:
@@ -269,6 +272,11 @@ def _GAMES(writer, empty):
             print(GAMES_BASE[game])
 
 
+def _TERMINATE(writer, empty):
+    if debug:
+        raise KeyboardInterrupt
+
+
 
 MESSAGE_HANDLERS = {b"HELLO":HELLO,
                     b"RENAME":RENAME,
@@ -284,7 +292,8 @@ MESSAGE_HANDLERS = {b"HELLO":HELLO,
                     b"USERS":USERS,
                     b"DISCONNECT":DISCONNECT,
                     b"_USERS":_USERS,
-                    b"_GAMES":_GAMES}
+                    b"_GAMES":_GAMES,
+                    b"_TERMINATE":_TERMINATE}
 
     
 
@@ -332,7 +341,7 @@ def handle_connection(reader, writer):
 
 
 
-if __name__ == '__main__':
+def main():
     loop = asyncio.get_event_loop()
     logging.basicConfig(level=logging.INFO)
     server_gen = asyncio.start_server(handle_connection, port=43521)
@@ -347,6 +356,14 @@ if __name__ == '__main__':
         server.close()
         loop.close()
         VG.closeDB()
+
+        
+if __name__ == '__main__':
+    main()
+    
+##    import profile
+##
+##    profile.run('main()')
 
 
 
