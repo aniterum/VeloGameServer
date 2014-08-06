@@ -33,10 +33,23 @@ DIVISOR = b"|"
 bRN = b"\r\n"
 RN = "\r\n"
 
+PEERNAME = 'peername'
+
+RES_MSG_OK     = b"0" + bRN
+
+RES_MSG_NOUSER = b"10" + bRN
+
+RES_MSG_CANTCREATE = b"20" + bRN
+RES_MSG_CANTREMOVE = b"21" + bRN
+
+
+
 ##HELLO(USERNAME):USERID - подключение к серверу; HELLO:USERNAME
 ##RENAME(NEWUSERNAME):RESULT - изменить имя пользователя
 ##CREATE(OPTIONS):GAMEID - создаёт игру, в данных игрока-создателя указывается, что он её создал.
+##REMOVE(GAMEID):RESULT - удаляет не начатую игру и отсоединяет всех пользователей
 ##JOIN(GAMEID):OPTIONS - подключиться к созданной игре;
+##LEAVE:RESULT - покинуть игру
 ##START_GAME(GAMEID):RESULT - начать созданную игру;
 ##STOP_GAME(GAMEID):RESULT - останавливает начатую игру;
 ##RECONNECT(USERID):RESULT - передключение после разрыва связи, заменит IP:PORT в данных пользователя;
@@ -47,26 +60,63 @@ RN = "\r\n"
 
 
 def HELLO(writer, userName):
-        peername = writer.get_extra_info('peername')
-        logging.info('Pier {} want to has name'.format(peername))
+    peername = writer.get_extra_info(PEERNAME)
+    logging.info('Pier {} want to has name'.format(peername))
 
-        userIDHash = str(hash(peername))
+    userIDHash = str(hash(peername))
 
-        writer.write(userIDHash.encode() + bRN)
+    writer.write(userIDHash.encode() + bRN)
 
-        if userIDHash in USER_BASE:
-            USER_BASE[peername]["name"] = userName.decode()
-        else:
-            USER_BASE[peername] = {"uID":userIDHash, "name":userName.decode(), "gameMaster":False, "gameID":None, "gameStatus":None, "regTime":time.time()}
+    if userIDHash in USER_BASE:
+        USER_BASE[peername]["name"] = userName.decode()
+    else:
+        USER_BASE[peername] = {"uID":userIDHash, "name":userName.decode(), "gameMaster":False, "gameID":None, "gameStatus":None, "regTime":time.time()}
 
-        print(USER_BASE)
+    print(USER_BASE)
 
 
 def CREATE(writer, options):
-    gameID = None
-    print("CREATE()")
-    return gameID
+    peername = writer.get_extra_info(PEERNAME)
+    if peername in USER_BASE.keys():
+        if not USER_BASE[peername]["gameMaster"]:
+            USER_BASE[peername]["gameMaster"] = True
+            gameID = hashlib.sha1(str(time.time()).encode() + b"GAMEID").hexdigest()
+            USER_BASE[peername]["gameID"] = gameID
+            GAMES_BASE[gameID] = {"type":"chase", "canViewEveryone":True, "gameMaster":USER_BASE[peername]["uID"], "started":False}
+            writer.write(gameID.encode() + bRN)
+            logging.info('Пир {} создал игру с ID : '.format(peername) + gameID)
+        else:
+            logging.info('Пир {} пытался создать игру, являсь создателем другой с ID : '.format(peername) + USER_BASE[peername]["gameID"])            
+            writer.write(RES_MSG_CANTCREATE)
+    else:
+        print(SEND_MESSAGE_ERR)
 
+    print(GAMES_BASE)
+        
+
+def REMOVE(writer, empty):
+    peername = writer.get_extra_info(PEERNAME)
+    if peername in USER_BASE.keys():
+        if USER_BASE[peername]["gameMaster"]:
+            gameID = USER_BASE[peername]["gameID"]
+            if gameID in GAMES_BASE.keys():
+                if not GAMES_BASE[gameID]["started"]:
+                    USER_BASE[peername]["gameID"] = None
+                    USER_BASE[peername]["gameMaster"] = False
+                    del GAMES_BASE[gameID]
+                    writer.write(RES_MSG_OK)
+                    logging.info('Пир {} удалил игру с ID : '.format(peername) + gameID)
+                else:
+                    writer.write(RES_MSG_CANTREMOVE)
+                    logging.info('Пир {} попытался удалить начатую игру с ID : '.format(peername) + gameID)
+                    
+        else:
+            writer.write(RES_MSG_CANTREMOVE)
+            logging.info('Пир {} попытался удалить игру без права на это'.format(peername))
+    else:
+        logging.info('Пир {} попытался удалить игру без логина'.format(peername))
+        writer.write(RES_MSG_NOUSER)
+                            
 
 
 def RENAME(writer, newUserName):
@@ -74,28 +124,30 @@ def RENAME(writer, newUserName):
     print("RENAME()")
     return result
 
-def JOIN(writer, gameID):
-    options = None
-    print("JOIN()")
-    return options
 
-def START(writer, gameID):
+def JOIN(writer, gameID):
+    _gameID = gameID.decode()
+    
+
+def LEAVE(writer, empty):
+    pass
+
+
+def START(writer, empty):
     result = None
     print("START()")
     return result
 
-def STOP(writer, gameID):
+def STOP(writer, empty):
     result = None
     print("STOP()")
     return result
 
-
-
 def RECONNECT(writer, userID):
-    peername = writer.get_extra_info('peername')
+    peername = writer.get_extra_info(PEERNAME)
 
     if peername in USER_BASE.keys():
-        print("No need reconnect")
+        logging.info('Pier {} TRY DO RECONNECT AGAIN'.format(peername))
         return
     
     _userID = userID.decode()
@@ -108,6 +160,13 @@ def RECONNECT(writer, userID):
         USER_BASE[peername] = USER_BASE[foundedKey]
         del USER_BASE[foundedKey]
         logging.info('Pier {} reconnected with uID : '.format(peername) + _userID)
+        writer.write(RES_MSG_OK)
+    else:
+        writer.write(RES_MSG_NOUSER)
+
+
+            
+        
 
 
 def SEND(writer, data):
@@ -125,8 +184,8 @@ def USERS(writer, data):
     print("USERS()")
     return result
 
-def DISCONNECT(writer, data):
-    peername = writer.get_extra_info('peername')
+def DISCONNECT(writer, empty):
+    peername = writer.get_extra_info(PEERNAME)
     logging.info('Connection from {} closed by DISCONNECT command'.format(peername))
     writer.close()
 
@@ -135,7 +194,9 @@ def DISCONNECT(writer, data):
 MESSAGE_HANDLERS = {b"HELLO":HELLO,
                     b"RENAME":RENAME,
                     b"CREATE":CREATE,
+                    b"REMOVE":REMOVE,
                     b"JOIN":JOIN,
+                    b"LEAVE":LEAVE,
                     b"START":START,
                     b"STOP":STOP,
                     b"RECONNECT":RECONNECT,
@@ -168,7 +229,7 @@ def getCommandAndData(data):
 
 @asyncio.coroutine
 def handle_connection(reader, writer):
-    peername = writer.get_extra_info('peername')
+    peername = writer.get_extra_info(PEERNAME)
     logging.info('Accepted connection from {}'.format(peername))
     while True:
         try:
