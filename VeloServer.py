@@ -81,36 +81,39 @@ def HELLO(writer, userName):
 
 def CREATE(writer, options):
     peername = writer.get_extra_info(PEERNAME)
-    if peername in USER_BASE.keys():
-        if not USER_BASE[peername]["gameMaster"]:
-            USER_BASE[peername]["gameMaster"] = True
+    try:
+        USER_INFO = USER_BASE[peername]
+        if not USER_INFO["gameMaster"]:
+            USER_INFO["gameMaster"] = True
             gameID = hashlib.sha1(str(time.time()).encode() + b"GAMEID").hexdigest()
-            USER_BASE[peername]["gameID"] = gameID
-            USER_BASE[peername]["gameState"] = "player"
+            USER_INFO["gameID"] = gameID
+            USER_INFO["gameState"] = "player"
             GAMES_BASE[gameID] = {"type":"chase",
                                   "canViewEveryone":True,
-                                  "gameMaster":USER_BASE[peername]["uID"],
+                                  "gameMaster":USER_INFO["uID"],
                                   "started":False}
             
             writer.write(gameID.encode() + bRN)
             logging.info('Пир {} создал игру с ID : '.format(peername) + gameID)
         else:
-            logging.info('Пир {} пытался создать игру, являсь создателем другой с ID : '.format(peername) + USER_BASE[peername]["gameID"])            
+            logging.info('Пир {} пытался создать игру, являсь создателем другой с ID : '.format(peername) + USER_INFO["gameID"])            
             writer.write(RES_MSG_CANTCREATE)
-    else:
-        print(SEND_MESSAGE_ERR)
+    except KeyError:
+        logging.info('Пир {} пытался создать игру без логина'.format(peername))            
+        writer.write(RES_MSG_NOUSER)
 
         
 
 def REMOVE(writer, empty):
     peername = writer.get_extra_info(PEERNAME)
-    if peername in USER_BASE.keys():
-        if USER_BASE[peername]["gameMaster"]:
-            gameID = USER_BASE[peername]["gameID"]
+    try:
+        USER_INFO = USER_BASE[peername]
+        if USER_INFO["gameMaster"]:
+            gameID = USER_INFO["gameID"]
             if gameID in GAMES_BASE.keys():
                 if not GAMES_BASE[gameID]["started"]:
-                    USER_BASE[peername]["gameID"] = None
-                    USER_BASE[peername]["gameMaster"] = False
+                    USER_INFO["gameID"] = None
+                    USER_INFO["gameMaster"] = False
                     del GAMES_BASE[gameID]
                     writer.write(RES_MSG_OK)
                     logging.info('Пир {} удалил игру с ID : '.format(peername) + gameID)
@@ -127,7 +130,8 @@ def REMOVE(writer, empty):
         else:
             writer.write(RES_MSG_CANTREMOVE)
             logging.info('Пир {} попытался удалить игру без права на это'.format(peername))
-    else:
+
+    except KeyError:
         logging.info('Пир {} попытался удалить игру без логина'.format(peername))
         writer.write(RES_MSG_NOUSER)
                             
@@ -135,15 +139,16 @@ def REMOVE(writer, empty):
 
 def RENAME(writer, newUserName):
     peername = writer.get_extra_info(PEERNAME)
-    if peername in USER_BASE.keys():
+    try:
+        USER_INFO = USER_BASE[peername]
         if len(newUserName) > 3:
-            USER_BASE[peername]["name"] = newUserName.decode()
+            USER_INFO["name"] = newUserName.decode()
             writer.write(RES_MSG_OK)
             logging.info('Пир {} переименован в '.format(peername) + newUserName.decode())
         else:
             logging.info('Пир {} выбрал слишком короткое имя: '.format(peername) + newUserName.decode())
         
-    else:
+    except KeyError:
         logging.info('Пир {} попытался переименоваться без логина'.format(peername))
         writer.write(RES_MSG_NOUSER)
 
@@ -151,15 +156,16 @@ def RENAME(writer, newUserName):
 
 def JOIN(writer, gameID):
     peername = writer.get_extra_info(PEERNAME)
-    if peername in USER_BASE.keys():
-        if not USER_BASE[peername]["gameMaster"]:
+    try:
+        USER_INFO = USER_BASE[peername]
+        if not USER_INFO["gameMaster"]:
             _gameID = gameID.decode()
             if _gameID in GAMES_BASE.keys():
-                USER_BASE[peername]["gameID"] = _gameID
+                USER_INFO["gameID"] = _gameID
                 if not GAMES_BASE[_gameID]["started"]:
-                    USER_BASE[peername]["gameState"] = "player"
+                    USER_INFO["gameState"] = "player"
                 else:
-                    USER_BASE[peername]["gameState"] = "spectrator"
+                    USER_INFO["gameState"] = "spectrator"
                 writer.write(RES_MSG_OK)
                 logging.info('Пир {} присоединился к игре gameID:'.format(peername) + _gameID)
                 
@@ -169,7 +175,7 @@ def JOIN(writer, gameID):
         else:
             logging.info('Пир {}, создавший другую игру пытается соединиться с другой игрой'.format(peername))
             writer.write(RES_MSG_MASTERCANTJOIN)
-    else:
+    except KeyError:
         logging.info('Пир {} попытался присоединиться к игре без логина'.format(peername))
         writer.write(RES_MSG_NOUSER)
     
@@ -177,12 +183,13 @@ def JOIN(writer, gameID):
 
 def LEAVE(writer, empty):
     peername = writer.get_extra_info(PEERNAME)
-    if peername in USER_BASE.keys():
-        if not USER_BASE[peername]["gameMaster"]:
-            if USER_BASE[peername]["gameID"] != None:
-                _gameID = USER_BASE[peername]["gameID"]
-                USER_BASE[peername]["gameID"] = None
-                USER_BASE[peername]["gameState"] = None
+    try:
+        USER_INFO = USER_BASE[peername]
+        if not USER_INFO["gameMaster"]:
+            if USER_INFO["gameID"] != None:
+                _gameID = USER_INFO["gameID"]
+                USER_INFO["gameID"] = None
+                USER_INFO["gameState"] = None
                 logging.info('Пир {} отключился от игры с ID: '.format(peername) + _gameID)
                 writer.write(RES_MSG_OK)
             else:
@@ -191,7 +198,7 @@ def LEAVE(writer, empty):
         else:
             logging.info('Мастер-пир {} попытался отключиться от игры'.format(peername))
             writer.write(RES_MSG_GAMENOTEXIST)
-    else:
+    except KeyError:
         logging.info('Пир {} попытался отключиться от игры без логина'.format(peername))
         writer.write(RES_MSG_NOUSER)
         
@@ -199,11 +206,12 @@ def LEAVE(writer, empty):
 
 def START(writer, empty):
     peername = writer.get_extra_info(PEERNAME)
-    if peername in USER_BASE.keys():
+    try:
+        USER_INFO = USER_BASE[peername]
         pass
 
         
-    else:
+    except KeyError:
         logging.info('Пир {} попытался начать игру без логина'.format(peername))
         writer.write(RES_MSG_NOUSER)
 
