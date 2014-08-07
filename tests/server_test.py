@@ -38,7 +38,7 @@ def send(sock, command, data = ""):
         _msg = DIV.join([command, data]) + RN
         
     sock.send(_msg)
-    return sock.recv(1024).strip()
+    return sock.recv(256).strip()
 
 
 
@@ -60,7 +60,7 @@ def makeFakeCoords():
 
 
 
-input("Enter для регистрации пользователей")
+print("Регистрации пользователей")
 for name in userNames:
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.connect(server_address)
@@ -76,7 +76,7 @@ for name in userNames:
     sock.close()
 
 
-input("Enter для создания игры и регистрации пользователей")
+print("Создание игры и подключение игроков")
 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 sock.connect(server_address)
 if send(sock, RECONNECT, ids[0]["uID"]) == MSG_OK:
@@ -103,6 +103,24 @@ for user in ids[1:]:
                 time.sleep(1)
                 sock.close()
 
+
+print("Запрос данных игроков")
+sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+sock.connect(server_address)
+if send(sock, RECONNECT, ids[0]["uID"]) == MSG_OK:
+    users = send(sock, USERS)
+    if len(users)>2:
+        try:
+            #uncomp = zlib.decompress(users)
+            print(users)
+            #print(uncomp)
+        except:
+            print(users.split(b"\n"))
+    else:
+        print("Error code:", users)
+
+
+exit()
 sendCount = 20
 input("Enter начала игры")
 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

@@ -38,9 +38,10 @@ RN = "\r\n"
 PEERNAME = 'peername'
 
 MSG_OK     = b"0" + bRN
+MSG_NOCOMMAND = b"99" + bRN
 
 MSG_NOUSER = b"10" + bRN
-TXT_NOUSER = "Пир {} попытался начать игру без логина"
+TXT_NOUSER = "Пир {} попытался начать игру БЕЗ ЛОГИНА"
 
 MSG_CANTCREATE   = b"20" + bRN
 MSG_CANTREMOVE   = b"21" + bRN
@@ -76,8 +77,6 @@ def HELLO(writer, userName):
     peername = writer.get_extra_info(PEERNAME)
 
     userIDHash = str(hash(peername))
-
-    writer.write(userIDHash.encode() + bRN)
     
     if userName:
         try:
@@ -87,13 +86,14 @@ def HELLO(writer, userName):
             else:
                 USER_BASE[peername] = {"uID":userIDHash,
                                        "name":_userName,
+                                       "pseudonime": hashlib.md5(userIDHash.encode()).hexdigest(),
                                        "gameMaster":False,
                                        "gameID":None,
                                        "gameState":None,
                                        "regTime":time.time(),
                                        "readyToGame":False}
-            logging.info('Пир {} присоединился с именем : '.format(peername) + _userName)            
-            writer.write(MSG_OK)
+            logging.info('Пир {} ПРИСОЕДИНИЛСЯ с именем : '.format(peername) + _userName)            
+            writer.write(userIDHash.encode() + bRN)
             
         except UnicodeDecodeError:
             logging.info('Пир {} задал ошибочное имя : '.format(peername))            
@@ -210,7 +210,7 @@ def JOIN(writer, gameID):
 
 def LEAVE(writer, empty):
     peername = writer.get_extra_info(PEERNAME)
-    try:7
+    try:
         USER_INFO = USER_BASE[peername]
         if not USER_INFO["gameMaster"]:
             if USER_INFO["gameID"] != None:
@@ -237,6 +237,7 @@ def READY(writer, empty):
         USER_INFO = USER_BASE[peername]
         if USER_INFO["gameID"] != None:
             USER_INFO["readyToGame"] = True
+            logging.info('Пир {} ГОТОВ к игре'.format(peername))
             writer.write(MSG_OK)
         else:
             logging.info('Пир {} готов в неизвестной игре'.format(peername))
@@ -261,6 +262,19 @@ def UNREADY(writer, empty):
     except KeyError:
         logging.info(TXT_NOUSER.format(peername))
         writer.write(MSG_NOUSER)
+
+
+def SET(write, data):
+    #USERNAME:GAMESTATE
+    peername = writer.get_extra_info(PEERNAME)
+    try:
+        USER_INFO = USER_BASE[peername]
+        
+
+    except KeyError:
+        logging.info(TXT_NOUSER.format(peername))
+        writer.write(MSG_NOUSER)
+    
 
 
 def START(writer, empty):
@@ -348,8 +362,10 @@ def SEND(writer, data):
                     float(lat)
                     float(lon)
                     float(time)
-                    
+
+                    #ЗДЕСЬ ДОЛЖНА БЫТЬ ЗАПИСЬ В БАЗУ ДАННЫХ!
                     print(lat, lon, time, status)
+                    
                     writer.write(MSG_OK)
                     
                 except ValueError:
@@ -372,11 +388,34 @@ def GET(writer, empty):
     print("GET()")
     return result
 
-def USERS(writer, empty):
-    result = None
-    print("USERS()")
-    return result
 
+def USERS(writer, empty):
+    peername = writer.get_extra_info(PEERNAME)
+    try:
+        USER_INFO = USER_BASE[peername]
+        _gameID = USER_INFO["gameID"]
+        if _gameID != None:
+            inGameUsers = []
+            inGameUsersAppend = inGameUsers.append
+            for user in USER_BASE:
+                _user = USER_BASE[user]
+                if _user["gameID"] == _gameID:
+                    inGameUsersAppend(":".join([_user["pseudonime"], _user["name"], str(_user["gameState"])]))
+
+            result = "\n".join(inGameUsers)
+            #writer.write(zlib.compress(result.encode()))
+            writer.write(result.encode())
+                 
+            
+        else:
+            logging.info('Пир {} неготов к неизвестной игре'.format(peername))
+            writer.write(MSG_GAMENOTEXIST)
+
+    except KeyError:
+        logging.info(TXT_NOUSER.format(peername))
+        writer.write(MSG_NOUSER)
+
+        
 def DISCONNECT(writer, empty):
     peername = writer.get_extra_info(PEERNAME)
     logging.info('Connection from {} closed by DISCONNECT command'.format(peername))
@@ -429,6 +468,8 @@ def unbaseAndUnPack(basedPack):
     return zlib.decompress(debased)
 
 def getCommandAndData(data):
+    if data == b"\n":
+        return [None, None]
     colonSymbol = data.find(b":")
     if colonSymbol == -1:
         return [None, None]
@@ -452,6 +493,9 @@ def handle_connection(reader, writer):
                 if ((command != None) and (command in MESSAGE_HANDLERS)):
                     func = MESSAGE_HANDLERS[command]
                     func(writer, params)
+                else:
+                    if not data == b"\n":
+                        writer.write(MSG_NOCOMMAND)
  
             else:
                 logging.info('Connection from {} closed by peer'.format(peername))
