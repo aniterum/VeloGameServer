@@ -22,31 +22,41 @@ GAMES_BASE = {}
 #gameID: {type:"chase", canViewEveryone:True, gameMaster:"GameMasterIDHash"}
 
 
-MSG_DISCONNECT  = b"DISCONNECT"
-MSG_SEND_DATA   = b"SEND"       #|ZLIB(GAMEID|USERID|LAT|LON|TIME)
-MSG_GET_DATA    = b"GET"        #|USERID  -> ZLIB(USERID|LAT|LON\r\nUSERID|LAT|LON)
-MSG_HELLO       = b"HELLO"      #|USERNAME -> USERID
-MSG_CREATE_GAME = b"CREATE_GAME"#|USERID|GAMETYPE 
-MSG_JOIN_GAME   = b"JOIN_GAME"  #|USERID|GAMEID
-MSG_GET_USERS   = b"GET_USERS"  # -> ZLIB (USERID:USERNAME\r\nUSERID:USERNAME)
-MSG_GAME_START  = b"STARTGAME"  #|USERID|GAMEID
+##MSG_DISCONNECT  = b"DISCONNECT"
+##MSG_SEND_DATA   = b"SEND"       #|ZLIB(GAMEID|USERID|LAT|LON|TIME)
+##MSG_GET_DATA    = b"GET"        #|USERID  -> ZLIB(USERID|LAT|LON\r\nUSERID|LAT|LON)
+##MSG_HELLO       = b"HELLO"      #|USERNAME -> USERID
+##MSG_CREATE_GAME = b"CREATE_GAME"#|USERID|GAMETYPE 
+##MSG_JOIN_GAME   = b"JOIN_GAME"  #|USERID|GAMEID
+##MSG_GET_USERS   = b"GET_USERS"  # -> ZLIB (USERID:USERNAME\r\nUSERID:USERNAME)
+##MSG_GAME_START  = b"STARTGAME"  #|USERID|GAMEID
 
-DIVISOR = b"|"
+##DIVISOR = b"|"
 bRN = b"\r\n"
 RN = "\r\n"
 
 PEERNAME = 'peername'
 
-RES_MSG_OK     = b"0" + bRN
+MSG_OK     = b"0" + bRN
 
-RES_MSG_NOUSER = b"10" + bRN
+MSG_NOUSER = b"10" + bRN
+TXT_NOUSER = "Пир {} попытался начать игру без логина"
+MSG_CANTCREATE   = b"20" + bRN
 
-RES_MSG_CANTCREATE   = b"20" + bRN
-RES_MSG_CANTREMOVE   = b"21" + bRN
-RES_MSG_GAMENOTEXIST = b"22" + bRN
-RES_MSG_MASTERCANTJOIN = b"23" + bRN
-RES_MSG_MASTERCANTLEAVE = b"24" + bRN
+MSG_CANTREMOVE   = b"21" + bRN
 
+MSG_NOMASTER     = b"22" + bRN
+
+MSG_GAMENOTEXIST = b"23" + bRN
+
+MSG_GAMEALREADYSTARTED = b"24" + bRN
+
+
+MSG_MASTERCANTJOIN = b"30" + bRN
+
+MSG_MASTERCANTLEAVE = b"31" + bRN
+
+TXT_GAMESTARTED = "Пир {} начал игру."
 
 
 ##HELLO(USERNAME):USERID - подключение к серверу; HELLO:USERNAME
@@ -66,7 +76,6 @@ RES_MSG_MASTERCANTLEAVE = b"24" + bRN
 
 def HELLO(writer, userName):
     peername = writer.get_extra_info(PEERNAME)
-    logging.info('Pier {} want to has name'.format(peername))
 
     userIDHash = str(hash(peername))
 
@@ -97,10 +106,10 @@ def CREATE(writer, options):
             logging.info('Пир {} создал игру с ID : '.format(peername) + gameID)
         else:
             logging.info('Пир {} пытался создать игру, являсь создателем другой с ID : '.format(peername) + USER_INFO["gameID"])            
-            writer.write(RES_MSG_CANTCREATE)
+            writer.write(MSG_CANTCREATE)
     except KeyError:
-        logging.info('Пир {} пытался создать игру без логина'.format(peername))            
-        writer.write(RES_MSG_NOUSER)
+        logging.info(TXT_NOUSER.format(peername))            
+        writer.write(MSG_NOUSER)
 
         
 
@@ -115,7 +124,7 @@ def REMOVE(writer, empty):
                     USER_INFO["gameID"] = None
                     USER_INFO["gameMaster"] = False
                     del GAMES_BASE[gameID]
-                    writer.write(RES_MSG_OK)
+                    writer.write(MSG_OK)
                     logging.info('Пир {} удалил игру с ID : '.format(peername) + gameID)
 
                     for player in USER_BASE.keys():
@@ -124,16 +133,16 @@ def REMOVE(writer, empty):
                             logging.info('Пир {} был удалён из игры с ID : '.format(player) + gameID)
                     
                 else:
-                    writer.write(RES_MSG_CANTREMOVE)
+                    writer.write(MSG_CANTREMOVE)
                     logging.info('Пир {} попытался удалить начатую игру с ID : '.format(peername) + gameID)
                     
         else:
-            writer.write(RES_MSG_CANTREMOVE)
+            writer.write(MSG_CANTREMOVE)
             logging.info('Пир {} попытался удалить игру без права на это'.format(peername))
 
     except KeyError:
         logging.info('Пир {} попытался удалить игру без логина'.format(peername))
-        writer.write(RES_MSG_NOUSER)
+        writer.write(MSG_NOUSER)
                             
 
 
@@ -143,14 +152,14 @@ def RENAME(writer, newUserName):
         USER_INFO = USER_BASE[peername]
         if len(newUserName) > 3:
             USER_INFO["name"] = newUserName.decode()
-            writer.write(RES_MSG_OK)
+            writer.write(MSG_OK)
             logging.info('Пир {} переименован в '.format(peername) + newUserName.decode())
         else:
             logging.info('Пир {} выбрал слишком короткое имя: '.format(peername) + newUserName.decode())
         
     except KeyError:
-        logging.info('Пир {} попытался переименоваться без логина'.format(peername))
-        writer.write(RES_MSG_NOUSER)
+        logging.info(TXT_NOUSER.format(peername))
+        writer.write(MSG_NOUSER)
 
 
 
@@ -166,18 +175,18 @@ def JOIN(writer, gameID):
                     USER_INFO["gameState"] = "player"
                 else:
                     USER_INFO["gameState"] = "spectrator"
-                writer.write(RES_MSG_OK)
+                writer.write(MSG_OK)
                 logging.info('Пир {} присоединился к игре gameID:'.format(peername) + _gameID)
                 
             else:
                 logging.info('Пир {} попытался присоединиться к несуществующей игре'.format(peername))
-                writer.write(RES_MSG_GAMENOTEXIST)
+                writer.write(MSG_GAMENOTEXIST)
         else:
             logging.info('Пир {}, создавший другую игру пытается соединиться с другой игрой'.format(peername))
-            writer.write(RES_MSG_MASTERCANTJOIN)
+            writer.write(MSG_MASTERCANTJOIN)
     except KeyError:
-        logging.info('Пир {} попытался присоединиться к игре без логина'.format(peername))
-        writer.write(RES_MSG_NOUSER)
+        logging.info(TXT_NOUSER.format(peername))
+        writer.write(MSG_NOUSER)
     
 
 
@@ -191,16 +200,16 @@ def LEAVE(writer, empty):
                 USER_INFO["gameID"] = None
                 USER_INFO["gameState"] = None
                 logging.info('Пир {} отключился от игры с ID: '.format(peername) + _gameID)
-                writer.write(RES_MSG_OK)
+                writer.write(MSG_OK)
             else:
                 logging.info('Пир {} попытался отключиться от игры, не подключенным к ней'.format(peername))
-                writer.write(RES_MSG_MASTERCANTLEAVE)
+                writer.write(MSG_MASTERCANTLEAVE)
         else:
             logging.info('Мастер-пир {} попытался отключиться от игры'.format(peername))
-            writer.write(RES_MSG_GAMENOTEXIST)
+            writer.write(MSG_GAMENOTEXIST)
     except KeyError:
-        logging.info('Пир {} попытался отключиться от игры без логина'.format(peername))
-        writer.write(RES_MSG_NOUSER)
+        logging.info(TXT_NOUSER.format(peername))
+        writer.write(MSG_NOUSER)
         
 
 
@@ -208,12 +217,22 @@ def START(writer, empty):
     peername = writer.get_extra_info(PEERNAME)
     try:
         USER_INFO = USER_BASE[peername]
-        pass
-
+        if (USER_INFO["gameMaster"] and (USER_INFO["gameID"] != None)):
+            _game = GAMES_BASE[USER_INFO["gameID"]]
+            if not _game["started"]:
+                _game["started"] = True
+                writer.write(MSG_OK)
+                logging.info(TXT_GAMESTARTED.format(peername))
+            else:
+                logging.info('Пир {} попытался начать уже начатую игру'.format(peername))
+                writer.write(MSG_GAMEALREADYSTARTED)
+        else:
+            logging.info('Пир {} попытался начать игру без мастер-прав'.format(peername))
+            writer.write(MSG_NOMASTER)
         
     except KeyError:
-        logging.info('Пир {} попытался начать игру без логина'.format(peername))
-        writer.write(RES_MSG_NOUSER)
+        logging.info(TXT_NOUSER.format(peername))
+        writer.write(MSG_NOUSER)
 
 
 def STOP(writer, empty):
@@ -226,7 +245,7 @@ def RECONNECT(writer, userID):
     peername = writer.get_extra_info(PEERNAME)
 
     if peername in USER_BASE.keys():
-        logging.info('Pier {} TRY DO RECONNECT AGAIN'.format(peername))
+        logging.info('Пир {} попытался сделать реконнект, не выходя'.format(peername))
         return
     
     _userID = userID.decode()
@@ -239,9 +258,9 @@ def RECONNECT(writer, userID):
         USER_BASE[peername] = USER_BASE[foundedKey]
         del USER_BASE[foundedKey]
         logging.info('Pier {} reconnected with uID : '.format(peername) + _userID)
-        writer.write(RES_MSG_OK)
+        writer.write(MSG_OK)
     else:
-        writer.write(RES_MSG_NOUSER)
+        writer.write(MSG_NOUSER)
 
 
             
@@ -283,6 +302,11 @@ def _GAMES(writer, empty):
 def _TERMINATE(writer, empty):
     if debug:
         raise KeyboardInterrupt
+
+
+def _REBOOT:(writer, empty):
+    if debug:
+        pass
 
 
 
@@ -334,7 +358,7 @@ def handle_connection(reader, writer):
             data = yield from asyncio.wait_for(reader.readline(), timeout=1000.0)
             if data: 
                 command, params = getCommandAndData(data)
-                if ((command != None) and (command in MESSAGE_HANDLERS.keys())):
+                if ((command != None) and (command in MESSAGE_HANDLERS)):
                     func = MESSAGE_HANDLERS[command]
                     func(writer, params)
  
