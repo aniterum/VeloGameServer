@@ -3,43 +3,123 @@ import random
 import time
 
 RN = b"\r\n"
+DIV = b":"
 
-sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+HELLO=b"HELLO"
+RENAME=b"RENAME"
+CREATE=b"CREATE"
+REMOVE=b"REMOVE"
+JOIN=b"JOIN"
+LEAVE=b"LEAVE"
+START=b"START"
+STOP=b"STOP"
+READY=b"READY"
+UNREADY=b"UNREADY"
+RECONNECT=b"RECONNECT"
+SEND=b"SEND"
+GET=b"GET"
+USERS=b"USERS"
+DISCONNECT=b"DISCONNECT"
+_USERS=b"_USERS"
+_GAMES=b"_GAMES"
+_TERMINATE=b"_TERMINATE"
+
+MSG_OK = b"0"
+
+userNames = "Антон, Вася, Женя, Лиза, Пикачу, Чубака".split(", ")
+ids = []
+
 server_address = ('localhost', 43521)
-sock.connect(server_address)
 
-input("Press Enter to Connect")
-sock.send(b"HELLO:ANTON" + RN)
-uID = sock.recv(1024).strip()
-print(b"uID : " + uID)
+def send(sock, command, data = ""):
+    if type(data) != type(b""):
+        _msg = DIV.join([command, data.encode()]) + RN
+    else:
+        _msg = DIV.join([command, data]) + RN
+        
+    sock.send(_msg)
+    return sock.recv(1024).strip()
 
-input("Press Enter to Disconnect")
-sock.send(b"DISCONNECT:" + RN)
-sock.close()
 
-input("Press Enter to Try Reconnect 3 times")
-for i in range(3):
-    time.sleep(1)
-    print("Try to connect %i time" % i)
+
+def makeFakeCoords():
+    Lat = str(random.randint(40,60) + random.random())
+    Lon = str(random.randint(10,30) + random.random())
+    Time = str(time.time())
+    state = random.randint(0, 99)
+    battery = random.randint(0, 99)
+    signal = random.randint(0, 99)
+    accuracy = random.randint(0, 99)
+
+    template = (Lat, Lon, Time,
+                state, battery, signal, accuracy)
+
+    result = "%s:%s:%s:%02i%02i%02i%02i" % template
+    
+    return result.encode()
+
+
+
+input("Enter для регистрации пользователей")
+for name in userNames:
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.connect(server_address)
-    sock.send(b"RECONNECT:" + uID + RN)
-    #input("Press Enter to Disconnect")
-    sock.send(b"DISCONNECT:" + RN)
+    
+    uID = send(sock, HELLO, name)
+    
+    ids.append({"name":name, "uID":uID})
+    print("uID:", uID, name)
+    
+    send(sock, DISCONNECT)
+
+    time.sleep(1)
     sock.close()
 
 
+input("Enter для создания игры и регистрации пользователей")
+sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+sock.connect(server_address)
+if send(sock, RECONNECT, ids[0]["uID"]) == MSG_OK:
+    gID = send(sock, CREATE)
+    if send(sock, READY) == MSG_OK:
+        send(sock, DISCONNECT)
+    else:
+        print("READY error")
+        time.sleep(1)
+        sock.close()
 
-##print("CREATE GAME")
-##sock.send(b"CREATE_GAME|" + uID.encode() + b"|NOSETTINGS\r\n")
-##gameID = sock.recv(1024).strip().decode()
-##print("gameID : " + gameID)
-##
-##
-##print("START GAME")
-##sock.send(b"STARTGAME|" + uID.encode() + b"|" + gameID.encode() + b"\r\n")
-##
-##for a in range(2):
-##    gpsTest = "|".join([gameID, uID, str(random.randint(30, 60) + random.random()), str(random.randint(30, 60) + random.random()), str(time.time())])
-##    sock.send(asio.MSG_SEND_DATA + b"|" + asio.packAndBase(gpsTest) + b"\r\n")
-##    time.sleep(0.5)
+for user in ids[1:]:
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.connect(server_address)
+    
+    if send(sock, RECONNECT, user["uID"]) == MSG_OK:
+        if send(sock, JOIN, gID) == MSG_OK:
+            if send(sock, READY) == MSG_OK:
+                send(sock, DISCONNECT)
+                time.sleep(1)
+                sock.close()
+            else:
+                print("READY error")
+                time.sleep(1)
+                sock.close()
+
+sendCount = 20
+input("Enter начала игры")
+sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+sock.connect(server_address)
+if send(sock, RECONNECT, ids[0]["uID"]) == MSG_OK:
+    if send(sock, START) == MSG_OK:
+        input("Enter для отправки данных")
+        for i in range(sendCount):
+            if send(sock, SEND, makeFakeCoords()) == MSG_OK:
+                time.sleep(0.5)
+            else:
+                break
+
+
+
+        
+    
+
+
+
