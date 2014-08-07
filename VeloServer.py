@@ -103,6 +103,10 @@ def HELLO(writer, userName):
         writer.write(MSG_NOUSER)
 
 
+def BYE(writer, empty):
+    print("Функция не реализована")
+
+
 
 def CREATE(writer, options):
     peername = writer.get_extra_info(PEERNAME)
@@ -265,7 +269,7 @@ def UNREADY(writer, empty):
 
 
 def SET(write, data):
-    #USERNAME:GAMESTATE
+    #USERPSEUDONIME:GAMESTATE
     peername = writer.get_extra_info(PEERNAME)
     try:
         USER_INFO = USER_BASE[peername]
@@ -421,6 +425,8 @@ def DISCONNECT(writer, empty):
     logging.info('Connection from {} closed by DISCONNECT command'.format(peername))
     writer.close()
 
+
+
 def _USERS(writer, empty):
     if debug:
         for user in USER_BASE:
@@ -439,11 +445,13 @@ def _TERMINATE(writer, empty):
 
 
 MESSAGE_HANDLERS = {b"HELLO"     :HELLO,
+                    b"BYE"       :BYE,
                     b"RENAME"    :RENAME,
                     b"CREATE"    :CREATE,
                     b"REMOVE"    :REMOVE,
                     b"JOIN"      :JOIN,
                     b"LEAVE"     :LEAVE,
+                    b"SET"       :SET,
                     b"START"     :START,
                     b"STOP"      :STOP,
                     b"READY"     :READY,

@@ -110,12 +110,7 @@ sock.connect(server_address)
 if send(sock, RECONNECT, ids[0]["uID"]) == MSG_OK:
     users = send(sock, USERS)
     if len(users)>2:
-        try:
-            #uncomp = zlib.decompress(users)
-            print(users)
-            #print(uncomp)
-        except:
-            print(users.split(b"\n"))
+        print(users.split(b"\n"))
     else:
         print("Error code:", users)
 
