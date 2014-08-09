@@ -50,7 +50,7 @@ MSG_OK     = b"0" + bRN
 MSG_NOCOMMAND = b"99" + bRN
 
 MSG_NOUSER = b"10" + bRN
-TXT_NOUSER = "Пир {} попытался начать игру БЕЗ ЛОГИНА"
+TXT_NOUSER = "Пир {} послал команду БЕЗ ЛОГИНА"
 
 MSG_CANTCREATE   = b"20" + bRN
 MSG_CANTREMOVE   = b"21" + bRN
@@ -63,19 +63,22 @@ MSG_MASTERCANTJOIN = b"30" + bRN
 MSG_MASTERCANTLEAVE = b"31" + bRN
 MSG_ERRORDATASEND   = b"32" + bRN
 
-TXT_GAMESTARTED = "Пир {} начал игру."
-TXT_GAMESTOPPED = "Пир {} остановил игру."
+TXT_GAMESTARTED = "Пир {} НАЧАЛ игру."
+TXT_GAMESTOPPED = "Пир {} ОСТАНОВИЛ игру."
+
+
+import configparser
+config = configparser.RawConfigParser()
+#Для того, чтобы сделать имена опций не в lower-case
+config.optionxform = str
+config.read('GameRules.cfg')
+gameSets = config.sections()
 
 
 
-
-
-
-
-
-##START_GAME(GAMEID):RESULT - начать созданную игру;
-##STOP_GAME(GAMEID):RESULT - останавливает начатую игру;
-##RECONNECT(USERID):RESULT - передключение после разрыва связи, заменит IP:PORT в данных пользователя;
+##START -> RESULT - начать созданную игру;
+##STOP -> RESULT - останавливает начатую игру;
+##RECONNECT:USERID -> RESULT - передключение после разрыва связи, заменит IP:PORT в данных пользователя;
 ##SEND(LAT, LON, TIME, uState):RESULT - отправить текущие координаты и собственное время, если вы были допущены в игру, и игра началась;
 ##GET:zLib(u1:(LAT, LON, uState), .... uN:(LAT, LON, uState)) - отдаёт координаты и текущий статус игрока (онлайн, оффлайн, потеряны координаты и т.д.;
 ##USERS:zLib(u1:(Name, GAMEROLE),  ... uN:(Name, GAMEROLE)) - даёт имена пользователей и их роли в игре.
@@ -427,12 +430,17 @@ def GET(writer, empty):
     return result
 
 
-
-def GETGAMETYPES(writer, empty):
+##GETGAMESETS: -> id, имена и комментарии к типам игр разделенных по \n
+def GETGAMESETS(writer, empty):
     peername = writer.get_extra_info(PEERNAME)
     try:
         USER_INFO = USER_BASE[peername]
-            
+        
+        sets = getGameSets()
+        print(sets)
+        
+        writer.write(MSG_OK)
+        
 
 
     except KeyError:
@@ -456,7 +464,7 @@ def USERS(writer, empty):
 
             result = "\n".join(inGameUsers)
             #writer.write(zlib.compress(result.encode()))
-            writer.write(result.encode())
+            writer.write(result.encode() + bRN)
                  
             
         else:
@@ -506,6 +514,7 @@ MESSAGE_HANDLERS = {b"HELLO"     :HELLO,
                     b"UNREADY"   :UNREADY,
                     b"RECONNECT" :RECONNECT,
                     b"SEND"      :SEND,
+                    b"GETGAMESETS": GETGAMESETS,
                     b"GET"       :GET,
                     b"USERS"     :USERS,
                     b"DISCONNECT":DISCONNECT,
@@ -533,8 +542,21 @@ def getCommandAndData(data):
         command = data[:colonSymbol]
         params = data[colonSymbol + 1:]
         return [command, params.strip()]
-    
-        
+
+
+def getGameSets():
+    return [{"id":gameSet,
+             "name": config.get(gameSet, "Name"),
+             "comment": config.get(gameSet, "Comment")
+            } for gameSet in gameSets]
+
+
+def getSetConfig(setName):
+    if setName in gameSets:
+        return {option:config.get(setName, option) for option in config.options(setName)}
+    else:
+        return None
+
 #============ Запуск и работа сервера ===============
 
 @asyncio.coroutine
@@ -582,6 +604,7 @@ def main():
 
         
 if __name__ == '__main__':
+    
     main()
 
 
