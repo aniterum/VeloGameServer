@@ -11,3 +11,4 @@ bin/dexedLibs/
 bin/
 *.pyc
 *.db
+*.db-journal

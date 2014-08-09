@@ -448,6 +448,18 @@ def GETGAMESETS(writer, empty):
         writer.write(MSG_NOUSER)
     
 
+def GETSETOPTIONS(writer, gameSetId):
+    peername = writer.get_extra_info(PEERNAME)
+    try:
+        USER_INFO = USER_BASE[peername]
+
+        
+        writer.write(MSG_OK)
+
+    except KeyError:
+        logging.info(TXT_NOUSER.format(peername))
+        writer.write(MSG_NOUSER)
+    
 
 def USERS(writer, empty):
     peername = writer.get_extra_info(PEERNAME)
@@ -514,7 +526,8 @@ MESSAGE_HANDLERS = {b"HELLO"     :HELLO,
                     b"UNREADY"   :UNREADY,
                     b"RECONNECT" :RECONNECT,
                     b"SEND"      :SEND,
-                    b"GETGAMESETS": GETGAMESETS,
+                    b"GETGAMESETS":GETGAMESETS,
+                    b"GETSETOPTIONS":GETSETOPTIONS,
                     b"GET"       :GET,
                     b"USERS"     :USERS,
                     b"DISCONNECT":DISCONNECT,
@@ -566,7 +579,7 @@ def handle_connection(reader, writer):
     while True:
         try:
             data = yield from asyncio.wait_for(reader.readline(), timeout=1000.0)
-            if data: 
+            if data:
                 command, params = getCommandAndData(data)
                 if ((command != None) and (command in MESSAGE_HANDLERS)):
                     func = MESSAGE_HANDLERS[command]
@@ -593,7 +606,6 @@ def main():
     server = loop.run_until_complete(server_gen)
     logging.info('Listening established on {0}'.format(server.sockets[0].getsockname()))
     try:
-##        VG = VeloGameDatabase(GAME_DATABASE_NAME)
         loop.run_forever()
     except KeyboardInterrupt:
         pass # Press Ctrl+C to stop
@@ -604,7 +616,6 @@ def main():
 
         
 if __name__ == '__main__':
-    
     main()
 
 
