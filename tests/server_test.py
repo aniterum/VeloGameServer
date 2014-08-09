@@ -115,14 +115,14 @@ if send(sock, RECONNECT, ids[0]["uID"]) == MSG_OK:
         print("Error code:", users)
 
 
-exit()
 sendCount = 20
-input("Enter начала игры")
+print("Начало игры")
 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 sock.connect(server_address)
 if send(sock, RECONNECT, ids[0]["uID"]) == MSG_OK:
+    time.sleep(1)
     if send(sock, START) == MSG_OK:
-        input("Enter для отправки данных")
+        print("Начата передача данных")
         for i in range(sendCount):
             if send(sock, SEND, makeFakeCoords()) == MSG_OK:
                 time.sleep(0.5)

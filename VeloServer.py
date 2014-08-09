@@ -1,4 +1,13 @@
-#Взято с http://habrahabr.ru/post/217143/
+#
+# Здесь находится реализация игрового сервера,
+# который будет отвечать на запросы приложений
+# и отдавать данные в зависимости от типа игры
+# и статуса игрока, если тип игры предусматривает
+# различные данные для разных игроков
+#
+# Концепция сервера с asyncio взята с http://habrahabr.ru/post/217143/
+#
+
 import asyncio
 import logging
 import concurrent.futures
@@ -58,12 +67,12 @@ TXT_GAMESTARTED = "Пир {} начал игру."
 TXT_GAMESTOPPED = "Пир {} остановил игру."
 
 
-##HELLO(USERNAME):USERID - подключение к серверу; HELLO:USERNAME
-##RENAME(NEWUSERNAME):RESULT - изменить имя пользователя
-##CREATE(OPTIONS):GAMEID - создаёт игру, в данных игрока-создателя указывается, что он её создал.
-##REMOVE(GAMEID):RESULT - удаляет не начатую игру и отсоединяет всех пользователей
-##JOIN(GAMEID):OPTIONS - подключиться к созданной игре;
-##LEAVE:RESULT - покинуть игру
+
+
+
+
+
+
 ##START_GAME(GAMEID):RESULT - начать созданную игру;
 ##STOP_GAME(GAMEID):RESULT - останавливает начатую игру;
 ##RECONNECT(USERID):RESULT - передключение после разрыва связи, заменит IP:PORT в данных пользователя;
@@ -73,6 +82,7 @@ TXT_GAMESTOPPED = "Пир {} остановил игру."
 ##DISCONNECT:RESULT - разъединяет с сервером, указывает статус "оффлайн".
 
 
+##HELLO:USERNAME -> USERID - подключение к серверу;
 def HELLO(writer, userName):
     peername = writer.get_extra_info(PEERNAME)
 
@@ -102,25 +112,26 @@ def HELLO(writer, userName):
         logging.info('Пир {} задал пустое имя : '.format(peername))            
         writer.write(MSG_NOUSER)
 
-
+## BYE: -> отключение игрока без возможности сделать RECONNECT
 def BYE(writer, empty):
     print("Функция не реализована")
 
 
-
+##CREATE:OPTIONS -> GAMEID - создаёт игру, в данных игрока-создателя указывается, что он её создал.
 def CREATE(writer, options):
     peername = writer.get_extra_info(PEERNAME)
     try:
         USER_INFO = USER_BASE[peername]
         if not USER_INFO["gameMaster"]:
             USER_INFO["gameMaster"] = True
-            gameID = hashlib.sha1(str(time.time()).encode() + b"GAMEID").hexdigest()
+            gameID = "G" + hashlib.sha1(str(time.time()).encode() + b"GAMEID").hexdigest()
             USER_INFO["gameID"] = gameID
             USER_INFO["gameState"] = "player"
-            GAMES_BASE[gameID] = {"type":"chase",
-                                  "canViewEveryone":True,
+            GAMES_BASE[gameID] = {"settings":{},
+                                  "name":"TempGameName",
                                   "gameMaster":USER_INFO["uID"],
-                                  "started":False}
+                                  "started":False,
+                                  "regtime":time.time()}
             
             writer.write(gameID.encode() + bRN)
             logging.info('Пир {} создал игру с ID : '.format(peername) + gameID)
@@ -132,7 +143,7 @@ def CREATE(writer, options):
         writer.write(MSG_NOUSER)
 
         
-
+##REMOVE: -> RESULT - удаляет не начатую игру и отсоединяет всех пользователей, если команду вызвал создатель игры
 def REMOVE(writer, empty):
     peername = writer.get_extra_info(PEERNAME)
     try:
@@ -167,7 +178,7 @@ def REMOVE(writer, empty):
         writer.write(MSG_NOUSER)
                             
 
-
+##RENAME:NEWUSERNAME -> RESULT - изменить имя пользователя
 def RENAME(writer, newUserName):
     peername = writer.get_extra_info(PEERNAME)
     try:
@@ -184,7 +195,9 @@ def RENAME(writer, newUserName):
         writer.write(MSG_NOUSER)
 
 
-
+##JOIN:GAMEID -> OPTIONS - подключиться к созданной игре;
+##если игра еще не началась, игрок получает статус "player",
+##а если началась, то "spectrator"
 def JOIN(writer, gameID):
     peername = writer.get_extra_info(PEERNAME)
     try:
@@ -211,7 +224,7 @@ def JOIN(writer, gameID):
         writer.write(MSG_NOUSER)
     
 
-
+##LEAVE: -> RESULT - покинуть игру, может любой, кроме мастер-пира
 def LEAVE(writer, empty):
     peername = writer.get_extra_info(PEERNAME)
     try:
@@ -234,7 +247,8 @@ def LEAVE(writer, empty):
         logging.info(TXT_NOUSER.format(peername))
         writer.write(MSG_NOUSER)
         
-
+#READY: -> RESULT - команда, говорящая о том, что игрок готов к игре,
+#а именно, найдена ли его координата GPS
 def READY(writer, empty):
     peername = writer.get_extra_info(PEERNAME)
     try:
@@ -286,11 +300,27 @@ def START(writer, empty):
     try:
         USER_INFO = USER_BASE[peername]
         if (USER_INFO["gameMaster"] and (USER_INFO["gameID"] != None)):
-            _game = GAMES_BASE[USER_INFO["gameID"]]
+            gameID = USER_INFO["gameID"]
+            _game = GAMES_BASE[gameID]
             if not _game["started"]:
                 _game["started"] = True
-                writer.write(MSG_OK)
+                
+                VG.createGameTable(gameID)
+                logging.info('Создана таблица базы данных', _game)
+
+                for player in USER_BASE:
+                    _player = USER_BASE[player]
+                    if _player["gameID"] == gameID:
+                        VG.addUserData(_player["uID"], _player["name"], _player["regTime"])
+                logging.info('В базу данных занесены имена пользователей')
+
+
+                _gameData =   _game["name"], _game["regtime"], _game["settings"]
+                VG.addGameInfo(gameID, _gameData)
+                
+                
                 logging.info(TXT_GAMESTARTED.format(peername))
+                writer.write(MSG_OK)
             else:
                 logging.info('Пир {} попытался начать уже начатую игру'.format(peername))
                 writer.write(MSG_GAMEALREADYSTARTED)
@@ -311,6 +341,7 @@ def STOP(writer, empty):
             _game = GAMES_BASE[USER_INFO["gameID"]]
             if _game["started"]:
                 _game["started"] = False
+                VG.db.commit()
                 writer.write(MSG_OK)
                 logging.info(TXT_GAMESTOPPED.format(peername))
             else:
@@ -367,12 +398,15 @@ def SEND(writer, data):
                     float(lon)
                     float(time)
 
-                    #ЗДЕСЬ ДОЛЖНА БЫТЬ ЗАПИСЬ В БАЗУ ДАННЫХ!
-                    print(lat, lon, time, status)
+                    databaseText = USER_INFO["uID"], lat, lon, time, status
+                    VG.addRawData(gameID, databaseText)
                     
                     writer.write(MSG_OK)
                     
                 except ValueError:
+                    logging.info('Пир {} прислал неверные данные: '.format(peername) + _data)
+                    writer.write(MSG_ERRORDATASEND)
+                except AttributeError:
                     logging.info('Пир {} прислал неверные данные: '.format(peername) + _data)
                     writer.write(MSG_ERRORDATASEND)
             else:
@@ -391,6 +425,20 @@ def GET(writer, empty):
     result = None
     print("GET()")
     return result
+
+
+
+def GETGAMETYPES(writer, empty):
+    peername = writer.get_extra_info(PEERNAME)
+    try:
+        USER_INFO = USER_BASE[peername]
+            
+
+
+    except KeyError:
+        logging.info(TXT_NOUSER.format(peername))
+        writer.write(MSG_NOUSER)
+    
 
 
 def USERS(writer, empty):
@@ -523,7 +571,7 @@ def main():
     server = loop.run_until_complete(server_gen)
     logging.info('Listening established on {0}'.format(server.sockets[0].getsockname()))
     try:
-        VG = VeloGameDatabase(GAME_DATABASE_NAME)
+##        VG = VeloGameDatabase(GAME_DATABASE_NAME)
         loop.run_forever()
     except KeyboardInterrupt:
         pass # Press Ctrl+C to stop
