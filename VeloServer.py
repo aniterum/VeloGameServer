@@ -16,6 +16,7 @@ import zlib
 import base64
 import time
 from VeloGameDatabase import VeloGameDatabase
+import GameTypes
 
 debug = True
 
@@ -52,16 +53,19 @@ MSG_NOCOMMAND = b"99" + bRN
 MSG_NOUSER = b"10" + bRN
 TXT_NOUSER = "Пир {} послал команду БЕЗ ЛОГИНА"
 
-MSG_CANTCREATE   = b"20" + bRN
-MSG_CANTREMOVE   = b"21" + bRN
-MSG_NOMASTER     = b"22" + bRN
-MSG_GAMENOTEXIST = b"23" + bRN
+MSG_CANTCREATE         = b"20" + bRN
+MSG_CANTREMOVE         = b"21" + bRN
+MSG_NOMASTER           = b"22" + bRN
+MSG_GAMENOTEXIST       = b"23" + bRN
 MSG_GAMEALREADYSTARTED = b"24" + bRN
-MSG_GAMENOTSTARTED = b"25" + bRN
+MSG_GAMENOTSTARTED     = b"25" + bRN
+MSG_NOTALLREADY        = b"26" + bRN
+MSG_NOSET              = b"27" + bRN
 
-MSG_MASTERCANTJOIN = b"30" + bRN
-MSG_MASTERCANTLEAVE = b"31" + bRN
-MSG_ERRORDATASEND   = b"32" + bRN
+
+MSG_MASTERCANTJOIN     = b"30" + bRN
+MSG_MASTERCANTLEAVE    = b"31" + bRN
+MSG_ERRORDATASEND      = b"32" + bRN
 
 TXT_GAMESTARTED = "Пир {} НАЧАЛ игру."
 TXT_GAMESTOPPED = "Пир {} ОСТАНОВИЛ игру."
@@ -117,7 +121,15 @@ def HELLO(writer, userName):
 
 ## BYE: -> отключение игрока без возможности сделать RECONNECT
 def BYE(writer, empty):
-    print("Функция не реализована")
+    peername = writer.get_extra_info(PEERNAME)
+    try:
+        
+        del USER_BASE[peername]
+        logging.info('Пир {} удалил себя из записей игры'.format(peername))            
+        writer.write(MSG_OK)
+    except KeyError:
+        logging.info(TXT_NOUSER.format(peername))            
+        writer.write(MSG_NOUSER)
 
 
 ##CREATE:OPTIONS -> GAMEID - создаёт игру, в данных игрока-создателя указывается, что он её создал.
@@ -134,7 +146,8 @@ def CREATE(writer, options):
                                   "name":"TempGameName",
                                   "gameMaster":USER_INFO["uID"],
                                   "started":False,
-                                  "regtime":time.time()}
+                                  "regtime":time.time(),
+                                  "players":None}
             
             writer.write(gameID.encode() + bRN)
             logging.info('Пир {} создал игру с ID : '.format(peername) + gameID)
@@ -297,7 +310,8 @@ def SET(write, data):
         writer.write(MSG_NOUSER)
     
 
-
+#Начинаем игру, но только если все игроки послали команду
+# READY: , иначе игра не начнется
 def START(writer, empty):
     peername = writer.get_extra_info(PEERNAME)
     try:
@@ -305,25 +319,42 @@ def START(writer, empty):
         if (USER_INFO["gameMaster"] and (USER_INFO["gameID"] != None)):
             gameID = USER_INFO["gameID"]
             _game = GAMES_BASE[gameID]
-            if not _game["started"]:
-                _game["started"] = True
-                
-                VG.createGameTable(gameID)
-                logging.info('Создана таблица базы данных', _game)
+            USER_INFO["readyToGame"] = True
 
+            if not _game["started"]:
+
+                allReady = True
                 for player in USER_BASE:
                     _player = USER_BASE[player]
                     if _player["gameID"] == gameID:
-                        VG.addUserData(_player["uID"], _player["name"], _player["regTime"])
-                logging.info('В базу данных занесены имена пользователей')
+                        allReady &= _player["readyToGame"]
 
+                if allReady:
+                    _game["started"] = True
+                    
+                    VG.createGameTable(gameID)
+                    logging.info('Создана таблица базы данных', _game)
 
-                _gameData =   _game["name"], _game["regtime"], _game["settings"]
-                VG.addGameInfo(gameID, _gameData)
+                    allPlayers = []
                 
-                
-                logging.info(TXT_GAMESTARTED.format(peername))
-                writer.write(MSG_OK)
+                    for player in USER_BASE:
+                        _player = USER_BASE[player]
+                        if _player["gameID"] == gameID:
+                            allPlayers.append(_player["uID"])
+                            VG.addUserData(_player["uID"], _player["name"], _player["gameID"], _player["regTime"])
+                    logging.info('В базу данных занесены имена пользователей')
+
+                    _game["players"] = allPlayers
+
+                    _gameData = _game["name"], _game["regtime"], _game["settings"]
+                    VG.addGameInfo(gameID, _gameData)
+                    
+                    logging.info(TXT_GAMESTARTED.format(peername))
+                    writer.write(MSG_OK)
+                    
+                else:
+                    logging.info('Пир {} пытался начать игру когда НЕ ВСЕ ИГРОКИ ГОТОВЫ'.format(peername))
+                    writer.write(MSG_NOTALLREADY)
             else:
                 logging.info('Пир {} попытался начать уже начатую игру'.format(peername))
                 writer.write(MSG_GAMEALREADYSTARTED)
@@ -425,24 +456,40 @@ def SEND(writer, data):
 
 
 def GET(writer, empty):
-    result = None
-    print("GET()")
-    return result
+    peername = writer.get_extra_info(PEERNAME)
+    try:
+        USER_INFO = USER_BASE[peername]
+        uID = USER_INFO["uID"]
+        gameID = USER_INFO["gameID"]
+        _game = GAMES_BASE[gameID]
+        
+        if _game["started"]:
+ 
+            gameHandler = GameTypes.GAMETYPES['SimpleChase']
+            result = gameHandler(USER_BASE, VG, gameID)
+            writer.write(result + bRN)
+
+        else:
+            logging.info("Пир {} запросил данные к НЕНАЧАТОЙ игре".format(peername))
+            writer.write(MSG_GAMENOTSTARTED)
+        
+    except KeyError:
+        logging.info(TXT_NOUSER.format(peername))
+        writer.write(MSG_NOUSER)
 
 
-##GETGAMESETS: -> id, имена и комментарии к типам игр разделенных по \n
+##GETGAMESETS: -> id, имена и комментарии к типам игр, разделенных по \n
 def GETGAMESETS(writer, empty):
     peername = writer.get_extra_info(PEERNAME)
     try:
         USER_INFO = USER_BASE[peername]
         
         sets = getGameSets()
-        print(sets)
         
-        writer.write(MSG_OK)
+        s = str(sets).encode() + bRN
         
-
-
+        writer.write(s)
+        
     except KeyError:
         logging.info(TXT_NOUSER.format(peername))
         writer.write(MSG_NOUSER)
@@ -453,8 +500,13 @@ def GETSETOPTIONS(writer, gameSetId):
     try:
         USER_INFO = USER_BASE[peername]
 
-        
-        writer.write(MSG_OK)
+        options = getSetConfig(gameSetId.decode())
+
+        if options != None:
+            writer.write(str(options).replace("'", "").encode() + bRN)
+        else:
+            logging.info('Пир {} запросил настройки НЕСУЩЕСТВУЮЩЕГО СЕТА'.format(peername))
+            writer.write(MSG_NOSET)
 
     except KeyError:
         logging.info(TXT_NOUSER.format(peername))
@@ -490,6 +542,7 @@ def USERS(writer, empty):
         
 def DISCONNECT(writer, empty):
     peername = writer.get_extra_info(PEERNAME)
+    writer.write(MSG_OK)
     logging.info('Connection from {} closed by DISCONNECT command'.format(peername))
     writer.close()
 
@@ -499,41 +552,45 @@ def _USERS(writer, empty):
     if debug:
         for user in USER_BASE:
             print(USER_BASE[user])
+    writer.write(MSG_OK)
         
 def _GAMES(writer, empty):
      if debug:
         for game in GAMES_BASE:
             print(GAMES_BASE[game])
+     writer.write(MSG_OK)
 
 def _TERMINATE(writer, empty):
     if debug:
+        writer.write(MSG_OK)
         raise KeyboardInterrupt
+    
 
 
 
 
-MESSAGE_HANDLERS = {b"HELLO"     :HELLO,
-                    b"BYE"       :BYE,
-                    b"RENAME"    :RENAME,
-                    b"CREATE"    :CREATE,
-                    b"REMOVE"    :REMOVE,
-                    b"JOIN"      :JOIN,
-                    b"LEAVE"     :LEAVE,
-                    b"SET"       :SET,
-                    b"START"     :START,
-                    b"STOP"      :STOP,
-                    b"READY"     :READY,
-                    b"UNREADY"   :UNREADY,
-                    b"RECONNECT" :RECONNECT,
-                    b"SEND"      :SEND,
-                    b"GETGAMESETS":GETGAMESETS,
+MESSAGE_HANDLERS = {b"HELLO"        :HELLO,
+                    b"BYE"          :BYE,
+                    b"RENAME"       :RENAME,
+                    b"CREATE"       :CREATE,
+                    b"REMOVE"       :REMOVE,
+                    b"JOIN"         :JOIN,
+                    b"LEAVE"        :LEAVE,
+                    b"SET"          :SET,
+                    b"START"        :START,
+                    b"STOP"         :STOP,
+                    b"READY"        :READY,
+                    b"UNREADY"      :UNREADY,
+                    b"RECONNECT"    :RECONNECT,
+                    b"SEND"         :SEND,
+                    b"GETGAMESETS"  :GETGAMESETS,
                     b"GETSETOPTIONS":GETSETOPTIONS,
-                    b"GET"       :GET,
-                    b"USERS"     :USERS,
-                    b"DISCONNECT":DISCONNECT,
-                    b"_USERS"    :_USERS,
-                    b"_GAMES"    :_GAMES,
-                    b"_TERMINATE":_TERMINATE}
+                    b"GET"          :GET,
+                    b"USERS"        :USERS,
+                    b"DISCONNECT"   :DISCONNECT,
+                    b"_USERS"       :_USERS,
+                    b"_GAMES"       :_GAMES,
+                    b"_TERMINATE"   :_TERMINATE}
 
     
 
@@ -558,10 +615,10 @@ def getCommandAndData(data):
 
 
 def getGameSets():
-    return [{"id":gameSet,
-             "name": config.get(gameSet, "Name"),
-             "comment": config.get(gameSet, "Comment")
-            } for gameSet in gameSets]
+    return {gameSet:{
+                     "name": config.get(gameSet, "Name"),
+                     "comment": config.get(gameSet, "Comment")
+                    } for gameSet in gameSets}
 
 
 def getSetConfig(setName):
@@ -587,7 +644,6 @@ def handle_connection(reader, writer):
                 else:
                     if not data == b"\n":
                         writer.write(MSG_NOCOMMAND)
- 
             else:
                 logging.info('Connection from {} closed by peer'.format(peername))
                 break

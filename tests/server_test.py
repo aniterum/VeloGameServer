@@ -18,6 +18,7 @@ UNREADY=b"UNREADY"
 RECONNECT=b"RECONNECT"
 SEND=b"SEND"
 GET=b"GET"
+GETGAMESETS = b"GETGAMESETS"
 USERS=b"USERS"
 DISCONNECT=b"DISCONNECT"
 _USERS=b"_USERS"
@@ -38,7 +39,16 @@ def send(sock, command, data = ""):
         _msg = DIV.join([command, data]) + RN
         
     sock.send(_msg)
-    return sock.recv(256).strip()
+    allReceived = b""
+    receivedBytesCount = 256
+    
+    while True:
+        tmprec = sock.recv(receivedBytesCount)
+        allReceived += tmprec
+        if tmprec.find(b"\r\n") != -1:
+            break
+        
+    return allReceived.strip()
 
 
 
@@ -59,7 +69,6 @@ def makeFakeCoords():
     return result.encode()
 
 
-
 print("Регистрации пользователей")
 for name in userNames:
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -70,7 +79,7 @@ for name in userNames:
     ids.append({"name":name, "uID":uID})
     print("uID:", uID, name)
     
-    send(sock, DISCONNECT)
+    #send(sock, DISCONNECT)
 
     time.sleep(1)
     sock.close()
@@ -80,9 +89,15 @@ print("Создание игры и подключение игроков")
 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 sock.connect(server_address)
 if send(sock, RECONNECT, ids[0]["uID"]) == MSG_OK:
+    gameTypes = send(sock, GETGAMESETS).decode()
+
+    print(gameTypes)
+    
     gID = send(sock, CREATE)
     if send(sock, READY) == MSG_OK:
-        send(sock, DISCONNECT)
+        #send(sock, DISCONNECT)
+        time.sleep(1)
+        sock.close()
     else:
         print("READY error")
         time.sleep(1)
@@ -95,7 +110,7 @@ for user in ids[1:]:
     if send(sock, RECONNECT, user["uID"]) == MSG_OK:
         if send(sock, JOIN, gID) == MSG_OK:
             if send(sock, READY) == MSG_OK:
-                send(sock, DISCONNECT)
+                #send(sock, DISCONNECT)
                 time.sleep(1)
                 sock.close()
             else:
@@ -109,25 +124,27 @@ sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 sock.connect(server_address)
 if send(sock, RECONNECT, ids[0]["uID"]) == MSG_OK:
     users = send(sock, USERS)
-    if len(users)>2:
-        print(users.split(b"\n"))
-    else:
-        print("Error code:", users)
+    print(users.decode().split("\n"))
+
+if send(sock, START) == MSG_OK:
+    print("Начало игры")
 
 
-sendCount = 20
-print("Начало игры")
-sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-sock.connect(server_address)
-if send(sock, RECONNECT, ids[0]["uID"]) == MSG_OK:
-    time.sleep(1)
-    if send(sock, START) == MSG_OK:
-        print("Начата передача данных")
-        for i in range(sendCount):
-            if send(sock, SEND, makeFakeCoords()) == MSG_OK:
-                time.sleep(0.5)
-            else:
-                break
+    sendCount = 10
+    for userData in ids:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.connect(server_address)
+        if send(sock, RECONNECT, userData["uID"]) == MSG_OK:
+            time.sleep(1)
+            print("Игрок", userData["name"], "шлёт координаты")
+            for i in range(sendCount):
+                result = send(sock, SEND, makeFakeCoords())
+                if  result == MSG_OK:
+                    time.sleep(0.1)
+                else:
+                    print(result)
+
+
 
 
 
