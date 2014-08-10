@@ -1,6 +1,7 @@
 
+    
 
-#Простая погоня, игрок видит
+#Простая погоня, беглец видит охотников
 def SimpleChase(USER_BASE, VG, gameID):
     allData = []
 
@@ -36,3 +37,24 @@ GAMETYPES = {
              "HideNSeek" : HideNSeek,
              "RandomRide" : RandomRide
             }
+
+
+import configparser
+config = configparser.RawConfigParser()
+#Для того, чтобы сделать имена опций не в lower-case
+config.optionxform = str
+config.read('GameRules.cfg')
+gameSets = config.sections()
+
+def getGameSets():
+    return {gameSet:{
+                     "name": config.get(gameSet, "Name"),
+                     "comment": config.get(gameSet, "Comment")
+                    } for gameSet in gameSets}
+
+
+def getSetConfig(setName):
+    if setName in gameSets:
+        return {option:config.get(setName, option) for option in config.options(setName)}
+    else:
+        return None

@@ -71,12 +71,7 @@ TXT_GAMESTARTED = "Пир {} НАЧАЛ игру."
 TXT_GAMESTOPPED = "Пир {} ОСТАНОВИЛ игру."
 
 
-import configparser
-config = configparser.RawConfigParser()
-#Для того, чтобы сделать имена опций не в lower-case
-config.optionxform = str
-config.read('GameRules.cfg')
-gameSets = config.sections()
+
 
 
 
@@ -484,7 +479,7 @@ def GETGAMESETS(writer, empty):
     try:
         USER_INFO = USER_BASE[peername]
         
-        sets = getGameSets()
+        sets = GameTypes.getGameSets()
         
         s = str(sets).encode() + bRN
         
@@ -500,7 +495,7 @@ def GETSETOPTIONS(writer, gameSetId):
     try:
         USER_INFO = USER_BASE[peername]
 
-        options = getSetConfig(gameSetId.decode())
+        options = GameTypes.getSetConfig(gameSetId.decode())
 
         if options != None:
             writer.write(str(options).replace("'", "").encode() + bRN)
@@ -613,19 +608,6 @@ def getCommandAndData(data):
         params = data[colonSymbol + 1:]
         return [command, params.strip()]
 
-
-def getGameSets():
-    return {gameSet:{
-                     "name": config.get(gameSet, "Name"),
-                     "comment": config.get(gameSet, "Comment")
-                    } for gameSet in gameSets}
-
-
-def getSetConfig(setName):
-    if setName in gameSets:
-        return {option:config.get(setName, option) for option in config.options(setName)}
-    else:
-        return None
 
 #============ Запуск и работа сервера ===============
 
