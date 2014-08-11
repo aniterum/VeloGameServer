@@ -129,20 +129,20 @@ if send(sock, RECONNECT, ids[0]["uID"]) == MSG_OK:
 if send(sock, START) == MSG_OK:
     print("Начало игры")
 
-
-    sendCount = 10
-    for userData in ids:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.connect(server_address)
-        if send(sock, RECONNECT, userData["uID"]) == MSG_OK:
-            time.sleep(1)
-            print("Игрок", userData["name"], "шлёт координаты")
-            for i in range(sendCount):
-                result = send(sock, SEND, makeFakeCoords())
-                if  result == MSG_OK:
-                    time.sleep(0.1)
-                else:
-                    print(result)
+    for i in range(10):
+        sendCount = 10
+        for userData in ids:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.connect(server_address)
+            if send(sock, RECONNECT, userData["uID"]) == MSG_OK:
+                time.sleep(1)
+                print("Игрок", userData["name"], "шлёт координаты")
+                for i in range(sendCount):
+                    result = send(sock, SEND, makeFakeCoords())
+                    if  result == MSG_OK:
+                        time.sleep(0.1)
+                    else:
+                        print(result)
 
 
 

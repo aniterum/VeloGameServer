@@ -11,7 +11,7 @@ def SimpleChase(USER_BASE, VG, gameID):
             #(9, '2172398289631200982', '51.046268731938646', '23.84547833037405', '1407690957.446274', '85301419')
             data = VG.getLastUserCoords(gameID, _user["uID"])
             if data != None:
-                allData.append(_user["pseudonime"] + ":" + ":".join(data[1:]))
+                allData.append(_user["pseudonime"] + ":" + ":".join(data[2:]))
 
     result = "\n".join(allData).encode()
     return result
